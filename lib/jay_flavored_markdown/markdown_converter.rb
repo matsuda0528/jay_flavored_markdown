@@ -1,5 +1,6 @@
-# -*- coding: utf-8 -*-
-#if __FILE__ == $0
+# frozen_string_literal: true
+
+# if __FILE__ == $0
 #  ################################################################
 #  # rbenv support:
 #  # If this file is a symlink, and bound to a specific ruby
@@ -23,15 +24,13 @@
 #    Bundler.require
 #  end
 #  require "pp"
-#end
+# end
 
-
-require 'kramdown-parser-gfm'
-require 'html/pipeline'
-require 'active_support'
-require 'active_support/core_ext'
-require File.expand_path("../markdown_to_ascii", __FILE__)
-
+require "kramdown-parser-gfm"
+require "html/pipeline"
+require "active_support"
+require "active_support/core_ext"
+require File.expand_path("markdown_to_ascii", __dir__)
 
 ################################################################
 ## Helper classes to manipulate list items
@@ -56,19 +55,19 @@ class LeveledCounter
   end
 
   def next_level
-    new {|c| c << nil}
+    new { |c| c << nil }
   end
 
   def previous_level
-    new {|c| c.pop}
+    new(&:pop)
   end
 
-  def set_level(lv)
+  def decide_level(level)
     new do |c|
-      diff = lv - c.size
-      if diff > 0
-        diff.times {|i| c << init_values[c.size - 1]}
-      elsif diff < 0
+      diff = level - c.size
+      if diff.positive?
+        diff.times { |_i| c << init_values[c.size - 1] }
+      elsif diff.negative?
         (-diff).times { c.pop }
         succ(c, c.size - 1)
       else
@@ -78,7 +77,7 @@ class LeveledCounter
   end
 
   def reset
-    new {|c| c[level] = init_values[level]}
+    new { |c| c[level] = init_values[level] }
   end
 
   def mark
@@ -112,15 +111,15 @@ class LeveledCounter
   end
 
   def new
-    dup = @counter.map{|c| c && c.dup}
+    dup = @counter.map { |c| c&.dup }
     yield dup
     self.class.new(dup)
   end
 end
 
 class ListItemLeveledCounter < LeveledCounter
-  INIT_VALUES = ["1", "A", "a"]
-  COUNT_SEPARATOR = '-'
+  INIT_VALUES = %w[1 A a].freeze
+  COUNT_SEPARATOR = "-"
   COUNTER_TYPE = :item
 
   def label
@@ -129,8 +128,8 @@ class ListItemLeveledCounter < LeveledCounter
 end
 
 class SectionCounter < LeveledCounter
-  INIT_VALUES = ["1", "1", "1"]
-  COUNT_SEPARATOR = '.'
+  INIT_VALUES = %w[1 1 1].freeze
+  COUNT_SEPARATOR = "."
   COUNTER_TYPE = :section
 
   def label
@@ -153,7 +152,7 @@ class MarkdownFeature
   end
 
   def indent_length(line)
-    indent =~ line ? $1.length : 0
+    indent =~ line ? Regexp.last_match(1).length : 0
   end
 
   def create_counter
@@ -161,7 +160,7 @@ class MarkdownFeature
   end
 
   def select_counter(counters)
-    counters.find {|item| item.type == type}
+    counters.find { |item| item.type == type }
   end
 
   private
@@ -188,7 +187,8 @@ class ListItemFeature < MarkdownFeature
     return false if string.nil?
     return true if indent_length(string) > current_indent
     return true if string =~ /^\r*$/
-    return false
+
+    false
   end
 end
 
@@ -201,7 +201,8 @@ class SectionFeature < MarkdownFeature
     return false if string.nil?
     return true if indent_length(string) > current_indent
     return true unless match_start_regexp?(string)
-    return false
+
+    false
   end
 end
 
@@ -223,7 +224,7 @@ class MarkdownEnumerator
     string = lines.shift
     children = []
 
-    if (feature = @features.find {|item| item.match_start_regexp?(string)})
+    if (feature = @features.find { |item| item.match_start_regexp?(string) })
       counter = feature.select_counter(counters)
 
       indent = feature.indent_length(string)
@@ -233,24 +234,24 @@ class MarkdownEnumerator
         children << lines.shift
       end
 
-      return [yield(children.shift, counter)] +
+      [yield(children.shift, counter)] +
         scan(children, next_level_counters(counters, counter), &block) +
         scan(lines, next_counters(counters, counter), &block)
     else
-      return [string] + scan(lines, reset_counters(counters, counter), &block)
+      [string] + scan(lines, reset_counters(counters, counter), &block)
     end
   end
 
   def next_counters(counters, counter)
-    counters.map {|item| item == counter ? item.next : item}
+    counters.map { |item| item == counter ? item.next : item }
   end
 
   def next_level_counters(counters, counter)
-    counters.map {|item| item == counter ? item.next_level : item}
+    counters.map { |item| item == counter ? item.next_level : item }
   end
 
   def reset_counters(counters, counter)
-    counters.map {|item| item == counter ? item.reset : item}
+    counters.map { |item| item == counter ? item.reset : item }
   end
 end
 
@@ -262,16 +263,17 @@ module TreeUtils
       child.parent = self
       child.make_parent_link
     end
-    return self
+    self
   end
 
   def parents
     ps = []
-    el = self
-    while el = el.parent
-      ps << el
+    elem = self
+    while elem.parent
+      elem = elem.parent
+      ps << elem
     end
-    return ps
+    ps
   end
 
   def find_first_ancestor(type)
@@ -290,95 +292,97 @@ module TreeUtils
 end
 
 class Visitor
-  DISPATCHER = Hash.new {|h,k| h[k] = "visit_#{k}"}
+  DISPATCHER = Hash.new { |h, k| h[k] = "visit_#{k}" }
 
-  def traverse(el)
-    call = DISPATCHER[el.type]
+  def traverse(elem)
+    call = DISPATCHER[elem.type]
     if respond_to?(call)
-      send(call, el)
+      send(call, elem)
     else
-      el.children.each do |child|
+      elem.children.each do |child|
         traverse(child)
       end
     end
-    return el
+    elem
   end
 end
 
 class NumberingVisitor < Visitor
   def initialize
+    super
     @label_counter = LeveledCounter.create(:item)
     @section_counter = SectionCounter.create(:section)
   end
 
-  def visit_ol(el)
-    enter_ol(el)
-    el.children.each do |child|
+  def visit_ol(elem)
+    enter_ol(elem)
+    elem.children.each do |child|
       traverse(child)
     end
-    exit_ol(el)
+    exit_ol(elem)
   end
 
-  def visit_li(el)
-    if el.parent.type == :ol
+  def visit_li(elem)
+    if elem.parent.type == :ol
       @label_counter = @label_counter.next
-      el.value = @label_counter
-      el.attr[:class] = "bullet-list-item"
+      elem.value = @label_counter
+      elem.attr[:class] = "bullet-list-item"
     end
-    el.children.each do |child|
+    elem.children.each do |child|
       traverse(child)
     end
   end
 
-  def visit_header(el)
-    @section_counter = @section_counter.set_level(el.options[:level])
-    el.value = @section_counter
+  def visit_header(elem)
+    @section_counter = @section_counter.decide_level(elem.options[:level])
+    elem.value = @section_counter
   end
 
   private
 
-  def enter_ol(el)
+  def enter_ol(_elem)
     @label_counter = @label_counter.next_level
   end
 
-  def exit_ol(el)
+  def exit_ol(_elem)
     @label_counter = @label_counter.previous_level
   end
 end
 
 class ReferenceVisitor < Visitor
   def initialize
+    super
     @xref_table = {}
     @item_table = []
     @section_table = []
   end
   attr_reader :xref_table, :item_table, :section_table
 
-  def visit_label(el)
-    ref = el.find_first_ancestor(:header) || el.find_first_ancestor(:li)
-    @xref_table[el.value] = ref.value if ref.value
-    el.children.each do |child|
+  def visit_label(elem)
+    ref = elem.find_first_ancestor(:header) || elem.find_first_ancestor(:li)
+    @xref_table[elem.value] = ref.value if ref.value
+    elem.children.each do |child|
       traverse(child)
     end
-    return el
+    elem
   end
 
-  def visit_li(el)
-    el.options[:relative_position] = @item_table.size
-    @item_table << el
-    el.children.each do |child|
+  def visit_li(elem)
+    elem.options[:relative_position] = @item_table.size
+    @item_table << elem
+    elem.children.each do |child|
       traverse(child)
     end
-    return el
+    elem
   end
 
-  def visit_header(el)
-    el.options[:relative_position] = @section_table.size
-    @section_table << el
-    el.children.each do |child|
+  def visit_header(elem)
+    elem.options[:relative_position] = @section_table.size
+    @section_table << elem
+    elem.children.each do |child|
       traverse(child)
     end
-    return el
+    elem
   end
 end
 
@@ -394,7 +398,6 @@ end
 module Kramdown
   module Parser
     class JayKramdown < GFM
-
       JAY_LIST_START_UL = /^(#{OPT_SPACE}[*])([\t| ].*?\n)/
       JAY_LIST_START_OL = /^(#{OPT_SPACE}(?:\d+\.|[+-]))([\t| ].*?\n)/
 
@@ -416,12 +419,8 @@ module Kramdown
       # Original Kramdown parser recognizes '+' and '-' as UL.
       # However, Jay takes them as OL.
       def new_block_el(*args)
-        if args[0] == :ul && @src.check(JAY_LIST_START_OL)
-          args[0] = :ol
-          super(*args)
-        else
-          super(*args)
-        end
+        args[0] = :ol if args[0] == :ul && @src.check(JAY_LIST_START_OL)
+        super(*args)
       end
 
       private
@@ -431,7 +430,7 @@ module Kramdown
         @src.pos += @src.matched_size
         @tree.children << Element.new(:label, @src[1], nil, category: :span)
       end
-      define_parser(:label_tags, LABEL_TAGS_START, '<<')
+      define_parser(:label_tags, LABEL_TAGS_START, "<<")
 
       REF_TAGS_START = /\[\[(.*?)\]\]/
       def parse_ref_tags
@@ -442,21 +441,29 @@ module Kramdown
 
       ACTION_ITEM_TAGS_START = /-->\((.+?)!:([0-9]{4})\)/
       def parse_action_item_tags
-        assignee, action = @src[1].strip, @src[2].strip
+        assignee = @src[1].strip
+        action = @src[2].strip
         @src.pos += @src.matched_size
-        @tree.children << Element.new(:action_item, nil, {"class" => "action-item", "data-action-item" => action}, :assignee => assignee, :action => action, :location => @src.current_line_number)
+        @tree.children << Element.new(:action_item, nil, { "class" => "action-item", "data-action-item" => action },
+                                      assignee: assignee, action: action, location: @src.current_line_number)
       end
-      define_parser(:action_item_tags, ACTION_ITEM_TAGS_START, '-->')
+      define_parser(:action_item_tags, ACTION_ITEM_TAGS_START, "-->")
 
       # FIXME: organizetionの省略に対応したら，コメントアウトされた正規表現を使用
       # ISSUE_LINK_TAGS_START = /(?:([\w.-]+)\/)??(?:([\w.-]+)\/)?#(\d+)/
-      ISSUE_LINK_TAGS_START = /([\w.-]+)\/([\w.-]+)\/#(\d+)/
+      ISSUE_LINK_TAGS_START = %r{([\w.-]+)/([\w.-]+)/#(\d+)}
       def parse_issue_link_tags
         url = "https://github.com/#{@src[1]}/#{@src[2]}/issues/#{@src[3]}"
         @src.pos += @src.matched_size
-        @tree.children << Element.new(:issue_link, nil, {"class" => "github-issue", "href" => url}, :match => @src[0], :location => @src.current_line_number)
+        @tree.children << Element.new(
+          :issue_link,
+          nil,
+          { "class" => "github-issue", "href" => url },
+          match: @src[0],
+          location: @src.current_line_number
+        )
       end
-      define_parser(:issue_link_tags, ISSUE_LINK_TAGS_START, '')
+      define_parser(:issue_link_tags, ISSUE_LINK_TAGS_START, "")
     end
   end
 end
@@ -471,7 +478,6 @@ module Kramdown
     # This class is refered from Kramdown::Document
     #
     class LineNumberedHtml < Html
-
       def initialize(root, options)
         super
         @xref_table = {}
@@ -483,55 +489,55 @@ module Kramdown
         @item_table = ref_visitor.item_table
         @section_table = ref_visitor.section_table
         debug_dump_tree(@root) if $JAY_DEBUG
-        @root
       end
 
       private
 
       def debug_dump_tree(tree, indent = 0)
-        STDERR.print " " * indent
-        STDERR.print "#{tree.type} #{tree.value}\n"
+        $stderr.print " " * indent
+        $stderr.print "#{tree.type} #{tree.value}\n"
         tree.children.each do |c|
           debug_dump_tree(c, indent + 2)
         end
       end
 
-      def convert_ref(el, indent)
-        if @xref_table[el.value]
-          return "(#{@xref_table[el.value].full_mark})"
-        elsif el.value =~ /^(\++|-+)$/
-          parent = el.find_first_ancestor(:header) || el.find_first_ancestor(:li)
+      def convert_ref(elem, _indent)
+        return "(#{@xref_table[elem.value].full_mark})" if @xref_table[elem.value]
+
+        if elem.value =~ /^(\++|-+)$/
+          parent = elem.find_first_ancestor(:header) || elem.find_first_ancestor(:li)
           table = parent.type == :li ? @item_table : @section_table
-          rel_pos = ($1.include?("+") ? 1 : -1) * $1.length
+          rel_pos = (Regexp.last_match(1).include?("+") ? 1 : -1) * Regexp.last_match(1).length
           idx = parent.options[:relative_position] + rel_pos
           ref_el = idx >= 0 ? table[idx] : nil
           return "(#{ref_el.value.full_mark})" if ref_el
         end
+
         "(???)"
       end
 
-      def convert_label(el, indent)
+      def convert_label(_elem, _indent)
         ""
       end
 
-      def convert_action_item(el, indent)
-        el.attr[:href] = ""
-        format_as_span_html(:a, el.attr, "-->(#{el.options[:assignee]} !:#{el.options[:action]})")
+      def convert_action_item(elem, _indent)
+        elem.attr[:href] = ""
+        format_as_span_html(:a, elem.attr, "-->(#{elem.options[:assignee]} !:#{elem.options[:action]})")
       end
 
-      def convert_issue_link(el, indent)
-        format_as_span_html(:a, el.attr, el.options[:match])
+      def convert_issue_link(elem, _indent)
+        format_as_span_html(:a, elem.attr, elem.options[:match])
       end
 
-      def make_xref(el)
-        if el.type == :label
-          ref = el.find_first_ancestor(:header) || el.find_first_ancestor(:li)
-          @xref_table[el.value] = ref.value if ref.value
+      def make_xref(elem)
+        if elem.type == :label
+          ref = elem.find_first_ancestor(:header) || elem.find_first_ancestor(:li)
+          @xref_table[elem.value] = ref.value if ref.value
         end
-        el.children.each do |child|
+        elem.children.each do |child|
           make_xref(child)
         end
-        return el
+        elem
       end
 
       # def add_numbers_to_li_text(el)
@@ -569,51 +575,44 @@ module Kramdown
       #     </li>
       #   </ul>
       #
-      def convert_li(el, indent)
-        if el.value
-          output = ' '*indent << "<#{el.type}" << html_attributes(el.attr) << ">"
-        else
-          output = ' '*indent << "<#{el.type}" << " class=\"ul_list_item\"" << html_attributes(el.attr) << ">"
-        end
+      def convert_li(elem, indent)
+        output = if elem.value
+                   " " * indent << "<#{elem.type}" << html_attributes(elem.attr) << ">"
+                 else
+                   " " * indent << "<#{elem.type}" << " class=\"ul_list_item\"" << html_attributes(elem.attr) << ">"
+                 end
 
-        if el.value.respond_to?(:mark)
-          output << "<span class=\"bullet-list-marker\">(#{el.value.mark})</span>"
-        end
+        output << "<span class=\"bullet-list-marker\">(#{elem.value.mark})</span>" if elem.value.respond_to?(:mark)
 
-        res = inner(el, indent)
-        if el.children.empty? || (el.children.first.type == :p && el.children.first.options[:transparent])
-          output << res << (res =~ /\n\Z/ ? ' '*indent : '')
+        res = inner(elem, indent)
+        if elem.children.empty? || (elem.children.first.type == :p && elem.children.first.options[:transparent])
+          output << res << (res =~ /\n\Z/ ? " " * indent : "")
         else
-          output << "\n" << res << ' '*indent
+          output << "\n" << res << " " * indent
         end
-        output << "</#{el.type}>\n"
-        STDERR.puts "LI: #{output}"
+        output << "</#{elem.type}>\n"
+        warn "LI: #{output}"
         output
       end
 
-      def convert_header(el, indent)
-        attr = el.attr.dup
-        if @options[:auto_ids] && !attr['id']
-          attr['id'] = generate_id(el.options[:raw_text])
-        end
-        @toc << [el.options[:level], attr['id'], el.children] if attr['id'] && in_toc?(el)
-        level = output_header_level(el.options[:level])
-        format_as_block_html("h#{level}", attr, "#{el.value.label} #{inner(el, indent)}", indent)
+      def convert_header(elem, indent)
+        attr = elem.attr.dup
+        attr["id"] = generate_id(elem.options[:raw_text]) if @options[:auto_ids] && !attr["id"]
+        @toc << [elem.options[:level], attr["id"], elem.children] if attr["id"] && in_toc?(elem)
+        level = output_header_level(elem.options[:level])
+        format_as_block_html("h#{level}", attr, "#{elem.value.label} #{inner(elem, indent)}", indent)
       end
 
-      def options_to_attributes(el, option_name, attr_name)
-        if el.options[option_name]
-          el.attr[attr_name] = el.options[option_name]
-        end
-        el.children.each do |child|
+      def options_to_attributes(elem, option_name, attr_name)
+        elem.attr[attr_name] = elem.options[option_name] if elem.options[option_name]
+        elem.children.each do |child|
           child = options_to_attributes(child, option_name, attr_name)
         end
-        return el
+        elem
       end
-
-    end # class LineNumberedHtml
-  end # module Converter
-end # module Kramdown
+    end
+  end
+end
 
 #
 # Convert Text to HTML filter conformed to HTML::Pipeline
@@ -622,14 +621,13 @@ end # module Kramdown
 class JayFlavoredMarkdownFilter < HTML::Pipeline::TextFilter
   def call
     Kramdown::Document.new(@text, {
-      input: "JayKramdown",
-      # syntax_highlighter: :rouge,
-      # syntax_highlighter_opts: {
-      #  line_numbers: true,
-      #  css_class: 'codehilite'
-      # }
-    }
-                          ).to_line_numbered_html.strip.force_encoding("utf-8")
+                             input: "JayKramdown"
+                             # syntax_highlighter: :rouge,
+                             # syntax_highlighter_opts: {
+                             #  line_numbers: true,
+                             #  css_class: 'codehilite'
+                             # }
+                           }).to_line_numbered_html.strip.force_encoding("utf-8")
   end
 end
 
@@ -640,21 +638,20 @@ end
 class JayFlavoredMarkdownToAsciiFilter < HTML::Pipeline::TextFilter
   def call
     Kramdown::Document.new(@text, {
-      input: "JayKramdown",
-      # hard_wrap は，GFM (の継承先JayKramdown)において有効
-      # :text エレメントの中に改行がある場合の挙動が代わる．
-      # "aaaaa\nbbbbb"
-      #   hard_wrap: false の場合，text: aaaaa, text: "\nbbbbb"
-      #   hard_wrap: true の場合， text:(aaaaa), :br, :text:("\nbbbbb")
-      # GFM デフォルト true
-      # hard_wrap: false,
-      # syntax_highlighter: :rouge,
-      # syntax_highlighter_opts: {
-      #  line_numbers: true,
-      #  css_class: 'codehilite'
-      # }
-    }
-                          ).to_ascii.strip.force_encoding("utf-8")
+                             input: "JayKramdown"
+                             # hard_wrap は，GFM (の継承先JayKramdown)において有効
+                             # :text エレメントの中に改行がある場合の挙動が代わる．
+                             # "aaaaa\nbbbbb"
+                             #   hard_wrap: false の場合，text: aaaaa, text: "\nbbbbb"
+                             #   hard_wrap: true の場合， text:(aaaaa), :br, :text:("\nbbbbb")
+                             # GFM デフォルト true
+                             # hard_wrap: false,
+                             # syntax_highlighter: :rouge,
+                             # syntax_highlighter_opts: {
+                             #  line_numbers: true,
+                             #  css_class: 'codehilite'
+                             # }
+                           }).to_ascii.strip.force_encoding("utf-8")
   end
 end
 
@@ -672,7 +669,7 @@ class JayFixIndentDepth < HTML::Pipeline::TextFilter
     items = MarkdownEnumerator.new(lines)
 
     @text = items.filter do |header, count|
-      header.sub(/^(\s*)([*+-])(\s+)/){|x| "#{valid_indent(count)}#{$2}#{$3}"}
+      header.sub(/^(\s*)([*+-])(\s+)/) { |_x| "#{valid_indent(count)}#{Regexp.last_match(2)}#{Regexp.last_match(3)}" }
     end.join("\n")
   end
 
@@ -693,7 +690,7 @@ class JayAddLabelToListItems < HTML::Pipeline::TextFilter
 
     # store <<name>> to hash
     @text = items.filter do |header, count|
-      header.sub(/^(\s*[+-]|##+)(\s+)/){|x| "#{$1}#{count.label}#{$2}"}
+      header.sub(/^(\s*[+-]|##+)(\s+)/) { |_x| "#{Regexp.last_match(1)}#{count.label}#{Regexp.last_match(2)}" }
     end.join("\n")
   end
 end
@@ -721,15 +718,15 @@ class JayAddCrossReference < HTML::Pipeline::TextFilter
     # Scan "<<name>>" and make hash {"name" => "C"}
     lines = MarkdownEnumerator.new(lines).filter do |header, count|
       header.gsub(/<<([^<>]+)>>/) do |_|
-        store_label($1, count.full_mark)
+        store_label(Regexp.last_match(1), count.full_mark)
         ""
       end
     end
 
     # replace "[[name]]" to "(C)"
     @text = lines.map do |line|
-      line.gsub(/\[\[([^\[\]]+)\]\]/) do |match|
-        "(#{lookup_label($1) || '???'})"
+      line.gsub(/\[\[([^\[\]]+)\]\]/) do |_match|
+        "(#{lookup_label(Regexp.last_match(1)) || "???"})"
       end
     end.join("\n")
   end
@@ -741,7 +738,7 @@ class JayAddCrossReference < HTML::Pipeline::TextFilter
   end
 
   def lookup_label(key)
-    return @labels[key]
+    @labels[key]
   end
 end
 
@@ -763,27 +760,27 @@ class JayRemoveMarkupElements < HTML::Pipeline::TextFilter
 
   # Remove " _hoge_ ", " *fuga* "
   def remove_emphasis(line)
-    return line.gsub(/\s([\_\*])([^\1]+?)\1\s/, '\2')
+    line.gsub(/\s([_*])([^\1]+?)\1\s/, '\2')
   end
 
   # Remove "#"
   def remove_header(line)
-    return line.gsub(/\A#+\s+(.*)/, '\1')
+    line.gsub(/\A#+\s+(.*)/, '\1')
   end
 
   # Remove "[title](link)"
   def remove_link(line)
-    return line.gsub(/(\[.*\])\(.*?\)/, '\1')
+    line.gsub(/(\[.*\])\(.*?\)/, '\1')
   end
 
   # Remove "*", "+", "-"
   def remove_list(line)
-    return line.gsub(/[\*\+\-]\s+/, '')
+    line.gsub(/[*+\-]\s+/, "")
   end
 
   # Remove " ~hoge~ "
   def remove_strikethrough(line)
-    return line.gsub(/\s~([^~]+?)~\s/, '\1')
+    line.gsub(/\s~([^~]+?)~\s/, '\1')
   end
 end
 
@@ -807,17 +804,17 @@ class JayFillColumns < HTML::Pipeline::TextFilter
     lines = @text.split("\n")
     @text = lines.map do |line|
       pos = paragraph_position(line)
-      fill_column(line, MAX_COLUMN, pos, ' ')
+      fill_column(line, MAX_COLUMN, pos, " ")
     end.join("\n")
   end
 
   private
 
-  def character_not_to_allow_newline_in_word?(c)
+  def character_not_to_allow_newline_in_word?(char)
     newline = "\n\r"
     symbol = "-,.，．"
     small_kana = "ぁぃぅぇぉゃゅょゎァィゥェォャュョヮ"
-    return !!(c =~ /[a-zA-Z#{newline}#{symbol}#{small_kana}]/)
+    !!(char =~ /[a-zA-Z#{newline}#{symbol}#{small_kana}]/)
   end
 
   # Get position of beginning of line after second line
@@ -827,22 +824,24 @@ class JayFillColumns < HTML::Pipeline::TextFilter
     # Example2: " (A) This is ...."
     #                ^
     if /(\A\s*([^\s]+ ::|\(.+\)) +)/ =~ str
-      return str_mb_width($1)
+      str_mb_width(Regexp.last_match(1))
     else
-      return 0
+      0
     end
   end
 
   # Get width of a character considering multibyte character
-  def char_mb_width(c)
-    return 0 if c == "\r" || c == "\n" || c.empty?
-    return c.ascii_only? ? 1 : 2
+  def char_mb_width(char)
+    return 0 if char == "\r" || char == "\n" || char.empty?
+
+    char.ascii_only? ? 1 : 2
   end
 
   # Get width of string considering multibyte character
   def str_mb_width(str)
     return 0 if str.empty?
-    return str.each_char.map{|c| char_mb_width(c)}.inject(:+)
+
+    str.each_char.map { |c| char_mb_width(c) }.inject(:+)
   end
 
   # str       : String, not including newline
@@ -852,19 +851,21 @@ class JayFillColumns < HTML::Pipeline::TextFilter
   def fill_column(str, max_width, position, padding)
     return str if max_width >= str_mb_width(str)
 
-    i = 0; width = 0
-    begin
+    i = 0
+    width = 0
+    loop do
       width += char_mb_width(str[i])
-    end while width <= max_width && i += 1
+      break unless width <= max_width && i += 1
+    end
 
     i += 1 while character_not_to_allow_newline_in_word?(str[i])
 
     if str.length > i + 1
-      x = str[0..(i-1)] + "\n"
-      xs = "#{padding * position}" + str[i..(str.length-1)]
-      return x + fill_column(xs, max_width, position, padding)
+      x = "#{str[0..(i - 1)]}\n"
+      xs = (padding * position).to_s + str[i..(str.length - 1)]
+      x + fill_column(xs, max_width, position, padding)
     else
-      return str
+      str
     end
   end
 end
@@ -883,8 +884,9 @@ class JayShortenIndent < HTML::Pipeline::TextFilter
 
   def shorten_indent(line)
     return line unless /\A(\s+)(.*)/ =~ line
-    indent_depth = $1.length / 2
-    return "#{' ' * indent_depth}#{$2}"
+
+    indent_depth = Regexp.last_match(1).length / 2
+    "#{" " * indent_depth}#{Regexp.last_match(2)}"
   end
 end
 
@@ -901,7 +903,10 @@ class JayAddLink < HTML::Pipeline::TextFilter
     # NOTE: {:.foo} is a kramdown dialect to add class="foo" to HTML.
     @text = lines.map do |line|
       line.gsub(%r{(?:([\w.-]+)/)??(?:([\w.-]+)/)?#(\d+)}i) do |match|
-        url = "https://github.com/#{$1 || context[:organization]}/#{$2}/issues/#{$3}"
+        organization = Regexp.last_match(1) || context[:organization]
+        repository_name = Regexp.last_match(2)
+        issue_number = Regexp.last_match(3)
+        url = "https://github.com/#{organization}/#{repository_name}/issues/#{issue_number}"
         "[#{match}](#{url}){:.github-issue}"
       end
     end
@@ -912,8 +917,9 @@ class JayAddLink < HTML::Pipeline::TextFilter
     #
     # NOTE: {:attr=val} is a kramdown dialect to add attribute to DOM element.
     @text = @text.map do |line|
-      line.gsub(/-->\((.+?)!:([0-9]{4})\)/) do |macth|
-        assignee, action = $1.strip, $2.strip
+      line.gsub(/-->\((.+?)!:([0-9]{4})\)/) do |_macth|
+        assignee = Regexp.last_match(1).strip
+        action = Regexp.last_match(2).strip
         "[-->(#{assignee} !:#{action})](){:.action-item}{:data-action-item=\"#{action}\"}"
       end
     end.join("\n")
@@ -948,30 +954,30 @@ class JayCustomItemBullet
   end
 
   class Filter < HTML::Pipeline::Filter
-    BulletPattern = /\(([a-zA-Z]|\d+)\)/.freeze
+    BULLET_PATTERN = /\(([a-zA-Z]|\d+)\)/
 
     # Pattern used to identify all ``+ (1)`` style
     # Useful when you need iterate over all items.
-    ItemPattern = /
+    ITEM_PATTERN = /
     ^
     (?:\s*[-+*]|(?:\d+\.))? # optional list prefix
     \s*                     # optional whitespace prefix
     (                       # checkbox
-        #{BulletPattern}
+        #{BULLET_PATTERN}
     )
     (?=\s)                  # followed by whitespace
     /x
 
-    ListItemSelector = ".//li[bullet_list_item(.)]".freeze
+    LIST_ITEM_SELECTOR = ".//li[bullet_list_item(.)]"
 
     class XPathSelectorFunction
       def self.bullet_list_item(nodes)
-        nodes if nodes.text =~ ItemPattern
+        nodes if nodes.text =~ ITEM_PATTERN
       end
     end
 
     # Selects first P tag of an LI, if present
-    ItemParaSelector = "./p[1]".freeze
+    ITEM_PARA_SELECTOR = "./p[1]"
 
     # List of `BuletList::Item` objects that were recognized in the document.
     # This is available in the result hash as `:bullet_list_items`.
@@ -986,7 +992,7 @@ class JayCustomItemBullet
     # Returns an Array of Nokogiri::XML::Element objects for ordered and
     # unordered lists.
     def list_items
-      doc.xpath(ListItemSelector, XPathSelectorFunction)
+      doc.xpath(LIST_ITEM_SELECTOR, XPathSelectorFunction)
     end
 
     # Filters the source for bullet list items.
@@ -1002,25 +1008,26 @@ class JayCustomItemBullet
         # add_css_class(li.parent, 'bullet-list')
 
         outer, inner =
-          if p = li.xpath(ItemParaSelector)[0]
+          if li.xpath(ITEM_PARA_SELECTOR)[0]
+            p = li.xpath(ITEM_PARA_SELECTOR)[0]
             [p, p.inner_html]
           else
             [li, li.inner_html]
           end
-        if match = (inner.chomp =~ ItemPattern && $1)
-          # item = Bullet::Item.new(match, inner)
-          # prepend because we're iterating in reverse
-          # bullet_list_items.unshift item
+        next unless inner.chomp =~ ITEM_PATTERN && Regexp.last_match(1)
 
-          add_css_class(li, 'bullet-list-item')
-          outer.inner_html = render_bullet_list_item(inner)
-        end
+        # item = Bullet::Item.new(match, inner)
+        # prepend because we're iterating in reverse
+        # bullet_list_items.unshift item
+
+        add_css_class(li, "bullet-list-item")
+        outer.inner_html = render_bullet_list_item(inner)
       end
     end
 
     def render_bullet_list_item(item)
       Nokogiri::HTML.fragment \
-        item.sub(ItemPattern, '<span class="bullet-list-marker">\1</span>'), 'utf-8'
+        item.sub(ITEM_PATTERN, '<span class="bullet-list-marker">\1</span>'), "utf-8"
     end
 
     def call
@@ -1031,10 +1038,11 @@ class JayCustomItemBullet
     # Private: adds a CSS class name to a node, respecting existing class
     # names.
     def add_css_class(node, *new_class_names)
-      class_names = (node['class'] || '').split(' ')
+      class_names = (node["class"] || "").split(" ")
       return if new_class_names.all? { |klass| class_names.include?(klass) }
+
       class_names.concat(new_class_names)
-      node['class'] = class_names.uniq.join(' ')
+      node["class"] = class_names.uniq.join(" ")
     end
   end
 end
@@ -1046,7 +1054,6 @@ end
 # https://github.com/ianks/octodown/blob/master/lib/octodown/renderer/github_markdown.rb
 #
 class JayFlavoredMarkdownConverter
-
   def initialize(text, options = {})
     @text = text
     @options = options
@@ -1063,10 +1070,10 @@ class JayFlavoredMarkdownConverter
     whitelist[:attributes][:all] << "data-linenum"
     {
       input: "GFM",
-      asset_root: 'https://github.githubassets.com/images/icons/',
+      asset_root: "https://github.githubassets.com/images/icons/",
       whitelist: whitelist,
       syntax_highlighter: :rouge,
-      syntax_highlighter_opts: {inline_theme: true, line_numbers: true, code_class: 'codehilite'}
+      syntax_highlighter_opts: { inline_theme: true, line_numbers: true, code_class: "codehilite" }
     }
   end
 
@@ -1080,7 +1087,7 @@ class JayFlavoredMarkdownConverter
       HTML::Pipeline::ImageMaxWidthFilter,
       HTML::Pipeline::MentionFilter,
       HTML::Pipeline::EmojiFilter,
-      HTML::Pipeline::SyntaxHighlightFilter,
+      HTML::Pipeline::SyntaxHighlightFilter
     ], context.merge(@options)
   end
 end
@@ -1089,7 +1096,6 @@ end
 # Jay Flavored Markdown to Plain Text converter
 #
 class JayFlavoredMarkdownToPlainTextConverter
-
   def initialize(text, options = {})
     @text = text
     @options = options
@@ -1107,7 +1113,7 @@ class JayFlavoredMarkdownToPlainTextConverter
     {
       input: "GFM",
       # hard_wrap: false,
-      asset_root: 'https://assets-cdn.github.com/images/icons/',
+      asset_root: "https://assets-cdn.github.com/images/icons/",
       whitelist: whitelist
     }
   end
@@ -1120,18 +1126,18 @@ class JayFlavoredMarkdownToPlainTextConverter
       # JayAddCrossReference,
       # JayRemoveMarkupElements,
       # JayShortenIndent,
-      JayFillColumns,
+      JayFillColumns
     ], context.merge(@options)
   end
 end
 
-if __FILE__ == $0
+if __FILE__ == $PROGRAM_NAME
 
   output_type = :html
 
   while ARGV[0] =~ /^--(.*)/
     ARGV.shift
-    case $1
+    case Regexp.last_match(1)
     when "output"
       output_type = ARGV.shift
     when "debug"
@@ -1139,12 +1145,12 @@ if __FILE__ == $0
     end
   end
 
-  if  output_type == "html"
-    puts <<-EOF
+  if output_type == "html"
+    puts <<-STYLE
     <style>
       ol {list-style-type: none;}
     </style>
-    EOF
+    STYLE
     puts JayFlavoredMarkdownConverter.new(gets(nil)).content
   else
     puts JayFlavoredMarkdownToPlainTextConverter.new(gets(nil)).content

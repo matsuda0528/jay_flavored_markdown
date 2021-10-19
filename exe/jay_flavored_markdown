@@ -1,33 +1,41 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
+
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
-require 'jay_flavored_markdown'
-require 'optparse'
+require "jay_flavored_markdown"
+require "optparse"
 
 module JayFlavoredMarkdown
-  if File.symlink?(__FILE__) and ENV["RBENV_VERSION"]
+  if File.symlink?(__FILE__) && ENV["RBENV_VERSION"]
     ENV["RBENV_VERSION"] = nil
     shims_path = File.expand_path("shims", ENV["RBENV_ROOT"])
-    ENV["PATH"] = shims_path + ":" + ENV["PATH"]
+    ENV["PATH"] = "#{shims_path}:#{ENV["PATH"]}"
     exec(File.readlink(__FILE__), *ARGV)
   end
 
-  gemfile = File.expand_path("../../Gemfile", __FILE__)
+  gemfile = File.expand_path("../Gemfile", __dir__)
 
-  if File.exists?(gemfile + ".lock")
+  if File.exist?("#{gemfile}.lock")
     ENV["BUNDLE_GEMFILE"] = gemfile
     require "bundler/setup"
     Bundler.require
   end
 
-  output_type = 'plaintext'
+  output_type = "plaintext"
 
   OptionParser.new do |opt|
     opt.version = VERSION
-    opt.separator('Options:')
-    opt.on('-d', '--debug', 'Start in debug mode'){$JAY_DEBUG = true}
-    opt.on('--output=type', ['html','plaintext'], 'html | plaintext (default:plaintext)'){|v| output_type = v}
-    opt.on_tail('-v', '--version', 'Show version'){puts opt.ver;exit}
-    opt.on_tail('-h', '--help', 'Show this message'){puts opt;exit}
+    opt.separator("Options:")
+    opt.on("-d", "--debug", "Start in debug mode") { $JAY_DEBUG = true }
+    opt.on("--output=type", %w[html plaintext], "html | plaintext (default:plaintext)") { |v| output_type = v }
+    opt.on_tail("-v", "--version", "Show version") do
+      puts opt.ver
+      exit
+    end
+    opt.on_tail("-h", "--help", "Show this message") do
+      puts opt
+      exit
+    end
 
     begin
       opt.parse!(ARGV)
@@ -38,14 +46,14 @@ module JayFlavoredMarkdown
   end
 
   case output_type
-  when 'html'
-    puts <<-EOF
+  when "html"
+    puts <<-STYLE
     <style>
       ol {list-style-type: none;}
     </style>
-    EOF
+    STYLE
     puts JayFlavoredMarkdownConverter.new(gets(nil)).content
-  when 'plaintext'
+  when "plaintext"
     puts JayFlavoredMarkdownToPlainTextConverter.new(gets(nil)).content
   end
 end

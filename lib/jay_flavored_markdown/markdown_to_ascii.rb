@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+# frozen_string_literal: true
+
 #
 #--
 # Copyright (C) 2016 Nomura Laboratory
@@ -7,9 +8,9 @@
 #++
 #
 
-require 'kramdown/parser'
-require 'kramdown/converter'
-require 'kramdown/utils'
+require "kramdown/parser"
+require "kramdown/converter"
+require "kramdown/utils"
 
 # block 間の明示的な改行は， :blank エレメントとしてパーズされる
 # span 中の改行は， :text エレメント中に残り，かつ，:br が挟まる
@@ -34,7 +35,6 @@ require 'kramdown/utils'
 
 module Kramdown
   module Converter
-
     # Converts a Kramdown::Document to ASCII Plain Text.
     #
     # You can customize this converter by sub-classing it and overriding the +convert_NAME+
@@ -48,7 +48,6 @@ module Kramdown
     # The return value of such a method has to be a string containing the element +el+ formatted as
     # HTML element.
     class Ascii < Base
-
       MAX_COLUMN = 80
 
       include ::Kramdown::Utils::Html
@@ -69,32 +68,32 @@ module Kramdown
         @item_table = ref_visitor.item_table
         @section_table = ref_visitor.section_table
         debug_dump_tree(@root) if $JAY_DEBUG
-        @root
       end
 
       # Dispatch the conversion of the element +el+ to a +convert_TYPE+ method using the +type+ of
       # the element.
-      def convert(el, indent = 0)
-        send(DISPATCHER[el.type], el, indent)
+      def convert(elem, indent = 0)
+        send(DISPATCHER[elem.type], elem, indent)
       end
 
       # The mapping of element type to conversion method.
-      DISPATCHER = Hash.new {|h,k| h[k] = "convert_#{k}"}
+      DISPATCHER = Hash.new { |h, k| h[k] = "convert_#{k}" }
 
       ################################################################
       private
 
       # Format the given element as span text.
-      def format_as_span(name, attr, body)
+      def format_as_span(name, _attr, body)
         return "<SPAN:#{name}>#{body}</SPAN:#{name}>" if $JAY_DEBUG
-        return body.to_s.gsub(/\n */, "")
+
+        body.to_s.gsub(/\n */, "")
       end
 
       # indent を付加した span の列を作る
       # 前提として span 内には block はない
       # span は，行頭にある (block に直接内包される)か，改行を含むものしか indent されないので注意すること．
-      def render_span(el, indent)
-        el.children.each do |child|
+      def render_span(elem, indent)
+        elem.children.each do |child|
           body << send(DISPATCHER[child.type], child, indent)
         end
         # XXX
@@ -112,17 +111,17 @@ module Kramdown
       #
       # DISPATCHER を通して作った str は，indent だけのインデントを持つブロックを返すという前提
       # str = send(DISPATCHER[inner_el.type], inner_el, indent)
-      def render_block(el, current_indent, add_indent = 0, bullet = nil)
+      def render_block(elem, current_indent, add_indent = 0, bullet = nil)
         body = ""
         span = ""
 
         orig_indent = current_indent
         current_indent = [(add_indent + current_indent), 0].max
 
-        el.children.each do |inner_el|
+        elem.children.each do |inner_el|
           str = send(DISPATCHER[inner_el.type], inner_el, current_indent)
 
-          if el.ancestor?(:blockquote)
+          if elem.ancestor?(:blockquote)
             body << str # no wrap
           elsif Element.category(inner_el) == :span
             span << str
@@ -133,19 +132,20 @@ module Kramdown
             span = ""
           end
         end
-        if span.length > 0
+        if span.length.positive?
           # body << wrap_block(span, current_indent, 60)
           body << span
           span = ""
         end
 
         body = add_bullet_to_block(bullet, body, orig_indent) if bullet
-        body = add_indent_to_block(add_indent, body) if add_indent > 0
+        body = add_indent_to_block(add_indent, body) if add_indent.positive?
         # body = remove_indent(body, 2) if bullet && bullet.length > 2 && ancestor?(el, :li)
-        body = body.sub(/[\s]*\Z/, "") + "\n"
+        body = "#{body.sub(/\s*\Z/, "")}\n"
 
-        return "<BLOCK:#{el.type}>#{body}</BLOCK:#{el.type}>\n" if $JAY_DEBUG
-        return "#{body}"
+        return "<BLOCK:#{elem.type}>#{body}</BLOCK:#{elem.type}>\n" if $JAY_DEBUG
+
+        body.to_s
       end
 
       # XXX この中で span に indent を付けるのはおかしい
@@ -154,18 +154,18 @@ module Kramdown
         # puts "WRAP_BLOCK: #{body}, #{indent}"
         body = remove_indent(body, indent)
         body = wrap(body, max_columns - indent)
-        body = add_indent_to_block(indent, body)
+        add_indent_to_block(indent, body)
         # puts "WRAPed_BLOCK: #{body}, #{indent}"
-        body
       end
 
       def remove_indent(body, indent)
-        body.gsub(/^#{" "*indent}/, "")
+        body.gsub(/^#{" " * indent}/, "")
       end
 
       def wrap(body, width)
         body = body.gsub(/[\r\n]/, "")
-        string, length = "", 0
+        string = ""
+        length = 0
         body.each_char.map do |c|
           string << c
           length += (c.bytesize == 1 ? 1 : 2)
@@ -180,49 +180,49 @@ module Kramdown
       ################################################################
       # conver each element
 
-      def convert_blank(el, indent)
-        render_block(el, indent)
+      def convert_blank(elem, indent)
+        render_block(elem, indent)
       end
 
-      def convert_text(el, indent)
-        format_as_span("text", nil, el.value)
+      def convert_text(elem, _indent)
+        format_as_span("text", nil, elem.value)
       end
 
-      def convert_p(el, indent)
-        render_block(el, indent)
+      def convert_p(elem, indent)
+        render_block(elem, indent)
       end
 
-      def convert_codeblock(el, indent)
-        "-----------------------\n" + el.value.to_s + "-----------------------\n"
+      def convert_codeblock(elem, _indent)
+        "-----------------------\n#{elem.value}-----------------------\n"
       end
 
-      def convert_blockquote(el, indent)
-        "-----------------------\n" + render_block(el, indent, 4) + "-----------------------"
+      def convert_blockquote(elem, indent)
+        "-----------------------\n#{render_block(elem, indent, 4)}-----------------------"
       end
 
-      def convert_header(el, indent)
-        render_block(el, indent, 0, "#{el.value.full_mark}")
+      def convert_header(elem, indent)
+        render_block(elem, indent, 0, elem.value.full_mark.to_s)
       end
 
-      def convert_hr(el, indent)
+      def convert_hr(_elem, _indent)
         "-" * MAX_COLUMN
       end
 
-      def convert_ul(el, indent)
-        render_block(el, indent)
+      def convert_ul(elem, indent)
+        render_block(elem, indent)
       end
 
-      def convert_dl(el, indent)
-        format_as_block("dl", nil, render_block(el, indent), indent)
+      def convert_dl(elem, indent)
+        format_as_block("dl", nil, render_block(elem, indent), indent)
       end
 
-      def convert_li(el, indent)
-        output = ''
+      def convert_li(elem, indent)
+        output = ""
 
-        bullet = el.value ? "(#{el.value.mark})" : "*"
+        bullet = elem.value ? "(#{elem.value.mark})" : "*"
 
         output << "<BLOCK:li>" if $JAY_DEBUG
-        output << render_block(el, indent, 0, bullet)
+        output << render_block(elem, indent, 0, bullet)
         output << "</BLOCK:li>" if $JAY_DEBUG
         output
       end
@@ -234,158 +234,158 @@ module Kramdown
         hang_string   = " " * hang
 
         body = body.sub(/^#{indent_string}/, "#{indent_string}#{bullet} ")
-        body = body.gsub(/\n/, "\n" + bullet_offset)
-        body = body.gsub(/^#{hang_string}/, "") if hang > 0
+        body = body.gsub(/\n/, "\n#{bullet_offset}")
+        body = body.gsub(/^#{hang_string}/, "") if hang.positive?
         body
       end
 
       def add_indent_to_block(indent, body)
         spc = " " * indent
-        body = "#{spc}#{body}".gsub(/\n/, "\n" + spc)
+        body = "#{spc}#{body}".gsub(/\n/, "\n#{spc}")
       end
 
-      def convert_dt(el, indent)
-        render_block(el, indent)
+      def convert_dt(elem, indent)
+        render_block(elem, indent)
       end
 
-      def convert_html_element(el, indent)
+      def convert_html_element(_elem, _indent)
         ""
       end
 
-      def convert_xml_comment(el, indent)
+      def convert_xml_comment(_elem, _indent)
         ""
       end
 
-      def convert_table(el, indent)
-        render_block(el, indent)
+      def convert_table(elem, indent)
+        render_block(elem, indent)
       end
 
-      def convert_td(el, indent)
-        render_block(el, indent)
+      def convert_td(elem, indent)
+        render_block(elem, indent)
       end
 
-      def convert_comment(el, indent)
-        render_block(el, indent)
+      def convert_comment(elem, indent)
+        render_block(elem, indent)
       end
 
-      def convert_br(el, indent)
+      def convert_br(_elem, _indent)
         "\n" # "\n"
       end
 
-      def convert_a(el, indent)
-        if (c = el.children.first) && c.type == :text && c.value
-          "[" + c.value + "]"
+      def convert_a(elem, _indent)
+        if (c = elem.children.first) && c.type == :text && c.value
+          "[#{c.value}]"
         else
-          el.attr["href"].to_s
+          elem.attr["href"].to_s
         end
       end
 
-      def convert_img(el, indent)
-        el.attr["href"].to_s
+      def convert_img(elem, _indent)
+        elem.attr["href"].to_s
       end
 
-      def convert_codespan(el, indent)
-        "-----------------------\n" + el.value.to_s + "-----------------------"
+      def convert_codespan(elem, _indent)
+        "-----------------------\n#{elem.value}-----------------------"
       end
 
-      def convert_footnote(el, indent)
+      def convert_footnote(_elem, _indent)
         ""
       end
 
-      def convert_raw(el, indent)
-        el.value + (el.options[:category] == :block ? "\n" : '')
+      def convert_raw(elem, _indent)
+        elem.value + (elem.options[:category] == :block ? "\n" : "")
       end
 
-      def convert_em(el, indent)
-        format_as_span(el.type, el.attr, render_block(el, indent))
+      def convert_em(elem, indent)
+        format_as_span(elem.type, elem.attr, render_block(elem, indent))
       end
 
       # ;gt
-      def convert_entity(el, indent)
-        format_as_span(el.type, el.attr, render_block(el, indent))
+      def convert_entity(elem, indent)
+        format_as_span(elem.type, elem.attr, render_block(elem, indent))
       end
 
-      def convert_typographic_sym(el, indent)
+      def convert_typographic_sym(elem, _indent)
         {
-          :mdash => "---",
-          :ndash => "--",
-          :hellip => "...",
-          :laquo_space => "<<",
-          :raquo_space => ">>",
-          :laquo => "<< ",
-          :raquo => " >>",
-        }[el.value]
+          mdash: "---",
+          ndash: "--",
+          hellip: "...",
+          laquo_space: "<<",
+          raquo_space: ">>",
+          laquo: "<< ",
+          raquo: " >>"
+        }[elem.value]
       end
 
-      def convert_smart_quote(el, indent)
+      def convert_smart_quote(elem, _indent)
         {
-          :lsquo => "'",
-          :rsquo => "'",
-          :ldquo => '"',
-          :rdquo => '"',
-        }[el.value]
+          lsquo: "'",
+          rsquo: "'",
+          ldquo: '"',
+          rdquo: '"'
+        }[elem.value]
       end
 
-      def convert_math(el, indent)
-        format_as_span(el.type, el.attr, render_block(el, indent))
+      def convert_math(elem, indent)
+        format_as_span(elem.type, elem.attr, render_block(elem, indent))
       end
 
-      def convert_abbreviation(el, indent)
-        title = @root.options[:abbrev_defs][el.value]
-        attr = @root.options[:abbrev_attr][el.value].dup
-        attr['title'] = title unless title.empty?
-        format_as_span("abbr", attr, el.value)
+      def convert_abbreviation(elem, _indent)
+        title = @root.options[:abbrev_defs][elem.value]
+        attr = @root.options[:abbrev_attr][elem.value].dup
+        attr["title"] = title unless title.empty?
+        format_as_span("abbr", attr, elem.value)
       end
 
-      def convert_root(el, indent)
-        render_block(el, indent)
+      def convert_root(elem, indent)
+        render_block(elem, indent)
       end
 
-      alias :convert_ol :convert_ul
-      alias :convert_dd :convert_li
-      alias :convert_xml_pi :convert_xml_comment
-      alias :convert_thead :convert_table
-      alias :convert_tbody :convert_table
-      alias :convert_tfoot :convert_table
-      alias :convert_tr  :convert_table
-      alias :convert_strong :convert_em
+      alias convert_ol convert_ul
+      alias convert_dd convert_li
+      alias convert_xml_pi convert_xml_comment
+      alias convert_thead convert_table
+      alias convert_tbody convert_table
+      alias convert_tfoot convert_table
+      alias convert_tr convert_table
+      alias convert_strong convert_em
 
       ################################################################
 
-      def convert_ref(el, indent)
-        if @xref_table[el.value]
-          return "(#{@xref_table[el.value].full_mark})"
-        elsif el.value =~ /^(\++|-+)$/
-          parent = el.find_first_ancestor(:header) || el.find_first_ancestor(:li)
+      def convert_ref(elem, _indent)
+        return "(#{@xref_table[elem.value].full_mark})" if @xref_table[elem.value]
+
+        if elem.value =~ /^(\++|-+)$/
+          parent = elem.find_first_ancestor(:header) || elem.find_first_ancestor(:li)
           table = parent.type == :li ? @item_table : @section_table
-          rel_pos = ($1.include?("+") ? 1 : -1) * $1.length
+          rel_pos = (Regexp.last_match(1).include?("+") ? 1 : -1) * Regexp.last_match(1).length
           idx = parent.options[:relative_position] + rel_pos
           ref_el = idx >= 0 ? table[idx] : nil
           return "(#{ref_el.value.full_mark})" if ref_el
         end
+
         "(???)"
       end
 
-      def convert_label(el, indent)
+      def convert_label(_elem, _indent)
         ""
       end
 
-      def convert_action_item(el, indent)
-        "-->(#{el.options[:assignee]})"
+      def convert_action_item(elem, _indent)
+        "-->(#{elem.options[:assignee]})"
       end
 
-      def convert_issue_link(el, indent)
-        el.options[:match]
+      def convert_issue_link(elem, _indent)
+        elem.options[:match]
       end
 
       def debug_dump_tree(tree, indent = 0)
-        STDERR.print " " * indent
-        STDERR.print "#{tree.type}(#{Element.category(tree)}) <<#{tree.value.to_s.gsub("\n", '\n')}>>\n"
+        $stderr.print " " * indent
+        $stderr.print "#{tree.type}(#{Element.category(tree)}) <<#{tree.value.to_s.gsub("\n", '\n')}>>\n"
         tree.children.each do |c|
           debug_dump_tree(c, indent + 2)
         end
       end
-
-    end # class Ascii
-  end # module Converter
-end # module Kramdown
+    end
+  end
+end
