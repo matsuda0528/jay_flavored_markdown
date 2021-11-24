@@ -1,3 +1,4 @@
+[![Ruby](https://github.com/matsuda0528/jay_flavored_markdown/actions/workflows/main.yml/badge.svg)](https://github.com/matsuda0528/jay_flavored_markdown/actions/workflows/main.yml)
 # JayFlavoredMarkdown
 
 Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/jay_flavored_markdown`. To experiment with that code, run `bin/console` for an interactive prompt.
